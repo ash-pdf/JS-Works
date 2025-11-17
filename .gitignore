@@ -1,207 +1,1476 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[codz]
-*$py.class
+"""
+Game Based on SDG Goal 10: Reduced Inequalities
+ENHANCED VERSION - Improved fonts, animations, and gameplay!
+"""
 
-# C extensions
-*.so
+import customtkinter as ctk
+import tkinter as tk
+from tkinter import messagebox
+import random
+import statistics
+import math
+from dataclasses import dataclass
+from typing import Dict, List, Tuple, Optional
+from datetime import datetime
+from PIL import Image
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# --- Pygame Mixer for Sound ---
+try:
+    import pygame
+    HAS_PYGAME = True
+except ImportError:
+    HAS_PYGAME = False
+    print("Warning: Pygame not installed. Sound is disabled.")
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+# --- CTK Appearance Setup ---
+ctk.set_appearance_mode("System")
+ctk.set_default_color_theme("blue")
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+# --- ENHANCED FONT SYSTEM ---
+class FontManager:
+    """Centralized font management for consistent, larger fonts"""
+    
+    # Font sizes (increased from original)
+    TITLE_MEGA = 52
+    TITLE_LARGE = 32
+    TITLE_MEDIUM = 24
+    HEADER_LARGE = 20
+    HEADER_MEDIUM = 18
+    BODY_LARGE = 16
+    BODY_MEDIUM = 14
+    BODY_SMALL = 13
+    CAPTION = 12
+    
+    @staticmethod
+    def get_font(size: int, weight: str = "normal", slant: str = "roman") -> ctk.CTkFont:
+        """Get a CTkFont with specified parameters"""
+        return ctk.CTkFont(
+            family="Segoe UI",  # More readable than Inter
+            size=size,
+            weight=weight,
+            slant=slant
+        )
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py.cover
-.hypothesis/
-.pytest_cache/
-cover/
+# --- SOUND MANAGER ---
+class SoundManager:
+    def __init__(self):
+        self.enabled = HAS_PYGAME
+        if self.enabled:
+            try:
+                pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+                self.sfx_click = pygame.mixer.Sound('button_click.mp3') if self._file_exists('button_click.mp3') else None
+                self.music_menu_path = 'background_music.mp3'
+                self.music_victory_path = 'victory_sound.mp3'
+                self.music_loss_path = 'loss_sting.mp3'
+            except pygame.error as e:
+                self.enabled = False
+                print(f"Error initializing Pygame Mixer: {e}")
+    
+    def _file_exists(self, filename: str) -> bool:
+        import os
+        return os.path.exists(filename)
+    
+    def play_music_menu(self):
+        if not self.enabled or not self._file_exists(self.music_menu_path):
+            return
+        try:
+            pygame.mixer.music.load(self.music_menu_path)
+            pygame.mixer.music.set_volume(0.5)
+            pygame.mixer.music.play(-1)
+        except: pass
+    
+    def stop_music(self):
+        if self.enabled:
+            pygame.mixer.music.stop()
+    
+    def play_sfx_click(self):
+        if self.enabled and self.sfx_click:
+            try: self.sfx_click.play()
+            except: pass
+    
+    def play_music_victory(self):
+        self.stop_music()
+        if not self.enabled or not self._file_exists(self.music_victory_path):
+            return
+        try:
+            pygame.mixer.music.load(self.music_victory_path)
+            pygame.mixer.music.play(0)
+        except: pass
+    
+    def play_music_loss(self):
+        self.stop_music()
+        if not self.enabled or not self._file_exists(self.music_loss_path):
+            return
+        try:
+            pygame.mixer.music.load(self.music_loss_path)
+            pygame.mixer.music.play(0)
+        except: pass
 
-# Translations
-*.mo
-*.pot
+# --- ENHANCED PARTICLE SYSTEM ---
+class Particle:
+    def __init__(self, x, y, color, velocity_x, velocity_y, lifetime=60):
+        self.x = x
+        self.y = y
+        self.color = color
+        self.vx = velocity_x
+        self.vy = velocity_y
+        self.lifetime = lifetime
+        self.age = 0
+        self.size = random.uniform(3, 7)
+    
+    def update(self):
+        # Smoother motion with easing
+        self.x += self.vx
+        self.y += self.vy
+        self.vy += 0.15  # Gentler gravity
+        self.vx *= 0.99  # Air resistance
+        self.age += 1
+        return self.age < self.lifetime
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
+class ParticleSystem:
+    def __init__(self, canvas):
+        self.canvas = canvas
+        self.particles = []
+        self.animation_running = False
+    
+    def emit(self, x, y, count, color_palette, spread=1.0):
+        """Emit particles with configurable spread"""
+        for _ in range(count):
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(3, 10) * spread
+            vx = math.cos(angle) * speed
+            vy = math.sin(angle) * speed - random.uniform(3, 7)
+            color = random.choice(color_palette)
+            self.particles.append(Particle(x, y, color, vx, vy, random.randint(50, 100)))
+        
+        if not self.animation_running:
+            self.animate()
+    
+    def animate(self):
+        """Smoother animation with better frame timing"""
+        self.animation_running = True
+        self.canvas.delete("particle")
+        
+        self.particles = [p for p in self.particles if p.update()]
+        
+        for p in self.particles:
+            alpha = 1 - (p.age / p.lifetime)
+            size = p.size * alpha
+            
+            # Draw with glow effect
+            self.canvas.create_oval(
+                p.x - size, p.y - size, p.x + size, p.y + size,
+                fill=p.color, outline="", tags="particle"
+            )
+            # Outer glow
+            if alpha > 0.5:
+                glow_size = size * 1.5
+                self.canvas.create_oval(
+                    p.x - glow_size, p.y - glow_size, 
+                    p.x + glow_size, p.y + glow_size,
+                    fill="", outline=p.color, tags="particle"
+                )
+        
+        if self.particles:
+            self.canvas.after(20, self.animate)  # Smoother 50fps
+        else:
+            self.animation_running = False
 
-# Flask stuff:
-instance/
-.webassets-cache
+# --- ACHIEVEMENT SYSTEM ---
+@dataclass
+class Achievement:
+    id: str
+    title: str
+    description: str
+    icon: str
+    unlocked: bool = False
+    unlock_time: Optional[str] = None
 
-# Scrapy stuff:
-.scrapy
+class AchievementManager:
+    def __init__(self):
+        self.achievements = {
+            "first_turn": Achievement("first_turn", "First Steps", "Complete your first turn", "👶"),
+            "balanced_act": Achievement("balanced_act", "Balanced Act", "Keep all societies above 60 wellbeing", "⚖️"),
+            "equality_champion": Achievement("equality_champion", "Equality Champion", "Reach 80 Equality Points", "🏆"),
+            "crisis_manager": Achievement("crisis_manager", "Crisis Manager", "Successfully handle 3 crisis events", "🚨"),
+            "people_person": Achievement("people_person", "People's President", "Win with all societies above 70", "❤️"),
+            "budget_master": Achievement("budget_master", "Budget Master", "Complete a turn without spending budget", "💰"),
+            "risk_taker": Achievement("risk_taker", "Risk Taker", "Choose the most expensive option 5 times", "🎲"),
+            "comeback_kid": Achievement("comeback_kid", "Comeback Kid", "Recover from below 20 Equality Points", "💪"),
+            "speed_runner": Achievement("speed_runner", "Speed Runner", "Win before turn 10", "⚡"),
+            "perfectionist": Achievement("perfectionist", "Perfectionist", "Finish with all societies above 80", "🌟"),
+        }
+        self.crisis_count = 0
+        self.expensive_choices = 0
+        self.low_eq_recovered = False
+    
+    def check_and_unlock(self, achievement_id: str) -> bool:
+        if achievement_id in self.achievements and not self.achievements[achievement_id].unlocked:
+            self.achievements[achievement_id].unlocked = True
+            self.achievements[achievement_id].unlock_time = datetime.now().strftime("%H:%M:%S")
+            return True
+        return False
+    
+    def get_unlocked_count(self) -> int:
+        return sum(1 for a in self.achievements.values() if a.unlocked)
+    
+    def get_total_count(self) -> int:
+        return len(self.achievements)
 
-# Sphinx documentation
-docs/_build/
+# --- POWER-UP SYSTEM ---
+@dataclass
+class PowerUp:
+    name: str
+    description: str
+    icon: str
+    cost: int
+    effect_type: str
 
-# PyBuilder
-.pybuilder/
-target/
+class PowerUpManager:
+    def __init__(self):
+        self.available_powerups = [
+            PowerUp("Unity Boost", "+10 to all societies", "🌟", 15, "boost"),
+            PowerUp("Budget Surplus", "+50 extra budget", "💎", 10, "budget"),
+            PowerUp("Crisis Shield", "Halve next crisis", "🛡️", 20, "shield"),
+            PowerUp("Equality Surge", "+15 Equality Points", "⚡", 12, "equality"),
+        ]
+        self.active_shields = []
+    
+    def can_afford(self, powerup: PowerUp, eq_points: int) -> bool:
+        return eq_points >= powerup.cost
 
-# Jupyter Notebook
-.ipynb_checkpoints
+# --- NEWS TICKER ---
+class NewsTicker:
+    def __init__(self, canvas, width):
+        self.canvas = canvas
+        self.width = width
+        self.messages = []
+        self.current_x = width
+        self.current_message = ""
+        self.animation_id = None
+    
+    def add_message(self, message: str):
+        self.messages.append(message)
+        if not self.animation_id:
+            self._next_message()
+    
+    def _next_message(self):
+        if self.messages:
+            self.current_message = self.messages.pop(0)
+            self.current_x = self.width
+            self._animate()
+    
+    def _animate(self):
+        self.canvas.delete("ticker_text")
+        self.canvas.create_text(
+            self.current_x, 18,
+            text=f"📰 {self.current_message}",
+            font=("Segoe UI", 13, "bold"),
+            fill="#2563EB",
+            tags="ticker_text"
+        )
+        
+        self.current_x -= 2  # Smoother, slower scroll
+        
+        if self.current_x > -600:
+            self.animation_id = self.canvas.after(25, self._animate)
+        else:
+            self.animation_id = None
+            if self.messages:
+                self.canvas.after(500, self._next_message)
 
-# IPython
-profile_default/
-ipython_config.py
+# --- DATA CLASSES ---
+@dataclass
+class Society:
+    name: str
+    wellbeing: int = 50
+    
+    def change(self, delta: int):
+        self.wellbeing = max(0, min(100, self.wellbeing + delta))
 
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
+@dataclass
+class GameEvent:
+    title: str
+    description: str
+    icon: str
+    event_type: str
+    auto_effects: Dict[str, int]
+    responses: List['EventResponse']
+    is_special: bool = False
 
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
+@dataclass
+class EventResponse:
+    title: str
+    description: str
+    effects: Dict[str, int]
+    eq_change: int
+    budget_cost: int = 0
 
-# UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
+# --- SPECIAL EVENT ANIMATIONS (ENHANCED) ---
+class SpecialEventAnimation:
+    @staticmethod
+    def protest_animation(canvas, duration=2500):
+        """Enhanced protest animation"""
+        width = canvas.winfo_width()
+        height = canvas.winfo_height()
+        
+        protesters = []
+        for i in range(8):
+            x = random.randint(50, width - 50)
+            y = height + 30
+            protester = canvas.create_text(x, y, text="😡", font=("Arial", 28), tags="protest")
+            protesters.append((protester, x, y, random.uniform(0.8, 1.2)))
+        
+        def animate_step(step=0):
+            if step < 60:
+                for protester, x, y, speed in protesters:
+                    new_y = y - (step * 3 * speed)
+                    offset_x = math.sin(step * 0.15) * 12
+                    canvas.coords(protester, x + offset_x, new_y)
+                canvas.after(35, lambda: animate_step(step + 1))
+            else:
+                canvas.after(duration, lambda: canvas.delete("protest"))
+        
+        animate_step()
+    
+    @staticmethod
+    def celebration_animation(canvas, duration=3500):
+        """Enhanced celebration animation"""
+        width = canvas.winfo_width()
+        height = canvas.winfo_height()
+        
+        confetti = []
+        for i in range(50):
+            x = random.randint(0, width)
+            y = -30
+            colors = ["#FFD700", "#FF69B4", "#00CED1", "#FF6347", "#32CD32", "#9370DB"]
+            size = random.randint(6, 12)
+            item = canvas.create_oval(x, y, x+size, y+size, 
+                                     fill=random.choice(colors), 
+                                     outline="", tags="celebration")
+            confetti.append((item, x, y, random.uniform(1.5, 4), size))
+        
+        def animate_step(step=0):
+            if step < 120:
+                for item, x, y, speed, size in confetti:
+                    new_y = y + (step * speed)
+                    wiggle = math.sin(step * 0.25) * 20
+                    rotate = step * 5
+                    canvas.coords(item, x + wiggle, new_y, x + wiggle + size, new_y + size)
+                canvas.after(25, lambda: animate_step(step + 1))
+            else:
+                canvas.delete("celebration")
+        
+        animate_step()
 
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
-#poetry.toml
+# --- EVENT LIBRARY (Same as before but with tweaked values for better balance) ---
+class EventLibrary:
+    @staticmethod
+    def generate_event(societies: Dict[str, Society], turn: int) -> GameEvent:
+        if random.random() < 0.12:  # Slightly higher chance of special events
+            return EventLibrary._generate_special_event(societies)
+        
+        event_pool = [
+            {
+                "title": "🌪️ Economic Recession Hits!",
+                "description": "A sudden economic downturn is affecting all communities. Markets are crashing and unemployment is rising rapidly!",
+                "icon": "📉",
+                "type": "crisis",
+                "auto_effects": {"Urban": -8, "Rural": -6, "Tribal": -4, "Minorities": -7},
+                "responses": [
+                    EventResponse(
+                        "🏦 Emergency Stimulus Package",
+                        "Deploy massive financial aid across all sectors with priority for hardest hit.",
+                        {"Urban": +15, "Rural": +10, "Tribal": +7, "Minorities": +12},
+                        eq_change=8,
+                        budget_cost=35
+                    ),
+                    EventResponse(
+                        "🏙️ Urban Business Bailout",
+                        "Focus resources on economic hubs to restart the growth engine.",
+                        {"Urban": +20, "Rural": -2, "Tribal": -1, "Minorities": -3},
+                        eq_change=-10,
+                        budget_cost=25
+                    ),
+                    EventResponse(
+                        "🌱 Grassroots Recovery",
+                        "Invest in community-led recovery initiatives in underserved areas.",
+                        {"Urban": +5, "Rural": +14, "Tribal": +16, "Minorities": +13},
+                        eq_change=12,
+                        budget_cost=30
+                    )
+                ]
+            },
+            {
+                "title": "🎓 Education Revolution!",
+                "description": "A global foundation offers to match your education investment dollar-for-dollar!",
+                "icon": "📚",
+                "type": "opportunity",
+                "auto_effects": {},
+                "responses": [
+                    EventResponse(
+                        "🏛️ Elite Universities",
+                        "Build world-class universities in major cities.",
+                        {"Urban": +18, "Minorities": +8, "Rural": -1, "Tribal": 0},
+                        eq_change=-5,
+                        budget_cost=20
+                    ),
+                    EventResponse(
+                        "📖 Universal Education",
+                        "Ensure every child gets quality primary education.",
+                        {"Minorities": +16, "Tribal": +18, "Rural": +14, "Urban": +6},
+                        eq_change=18,
+                        budget_cost=35
+                    ),
+                    EventResponse(
+                        "💼 Vocational Training",
+                        "Create practical skill centers accessible to all.",
+                        {"Urban": +10, "Rural": +12, "Tribal": +11, "Minorities": +13},
+                        eq_change=14,
+                        budget_cost=28
+                    )
+                ]
+            },
+            {
+                "title": "🏥 Pandemic Outbreak!",
+                "description": "A deadly disease is spreading! Vulnerable communities are at highest risk!",
+                "icon": "🦠",
+                "type": "crisis",
+                "auto_effects": {"Minorities": -12, "Tribal": -14, "Urban": -5, "Rural": -8},
+                "responses": [
+                    EventResponse(
+                        "🚑 Universal Emergency Response",
+                        "Deploy mobile hospitals and free treatment everywhere.",
+                        {"Minorities": +20, "Tribal": +22, "Urban": +8, "Rural": +14},
+                        eq_change=16,
+                        budget_cost=45
+                    ),
+                    EventResponse(
+                        "🏥 Urban Hospitals Only",
+                        "Upgrade major city hospitals to handle the surge.",
+                        {"Urban": +18, "Minorities": +4, "Tribal": +2, "Rural": +5},
+                        eq_change=-8,
+                        budget_cost=25
+                    ),
+                    EventResponse(
+                        "👨‍⚕️ Community Health Training",
+                        "Train local health workers in affected areas.",
+                        {"Minorities": +14, "Tribal": +16, "Urban": +4, "Rural": +12},
+                        eq_change=12,
+                        budget_cost=30
+                    )
+                ]
+            },
+            {
+                "title": "💰 Oil Discovery!",
+                "description": "Massive oil reserves found! This windfall could transform your nation!",
+                "icon": "🛢️",
+                "type": "opportunity",
+                "auto_effects": {},
+                "responses": [
+                    EventResponse(
+                        "🏦 National Wealth Fund",
+                        "Create a sovereign fund to benefit all citizens equally.",
+                        {"Urban": +12, "Rural": +12, "Tribal": +12, "Minorities": +12},
+                        eq_change=20,
+                        budget_cost=15
+                    ),
+                    EventResponse(
+                        "🏭 Industrial Development",
+                        "Build refineries and industries in urban centers.",
+                        {"Urban": +25, "Minorities": +10, "Rural": +3, "Tribal": +2},
+                        eq_change=-12,
+                        budget_cost=20
+                    ),
+                    EventResponse(
+                        "🌿 Green Transition",
+                        "Use windfall to develop renewable energy everywhere.",
+                        {"Rural": +18, "Tribal": +16, "Urban": +8, "Minorities": +14},
+                        eq_change=15,
+                        budget_cost=30
+                    )
+                ]
+            },
+            {
+                "title": "🌐 Digital Revolution",
+                "description": "The internet age is here! The digital divide threatens to leave many behind.",
+                "icon": "💻",
+                "type": "challenge",
+                "auto_effects": {"Urban": +4, "Minorities": -3, "Rural": -5, "Tribal": -7},
+                "responses": [
+                    EventResponse(
+                        "📡 Universal Broadband",
+                        "Massive infrastructure investment for rural connectivity.",
+                        {"Rural": +20, "Tribal": +22, "Minorities": +12, "Urban": +4},
+                        eq_change=18,
+                        budget_cost=50
+                    ),
+                    EventResponse(
+                        "📱 Mobile Subsidies",
+                        "Subsidize smartphones and data for low-income groups.",
+                        {"Minorities": +16, "Rural": +12, "Tribal": +14, "Urban": +8},
+                        eq_change=14,
+                        budget_cost=35
+                    ),
+                    EventResponse(
+                        "🏙️ Smart Cities",
+                        "Transform urban centers into tech hubs.",
+                        {"Urban": +22, "Minorities": +10, "Rural": +2, "Tribal": +1},
+                        eq_change=-10,
+                        budget_cost=28
+                    )
+                ]
+            },
+        ]
+        
+        return EventLibrary._create_event_from_template(random.choice(event_pool))
+    
+    @staticmethod
+    def _generate_special_event(societies: Dict[str, Society]) -> GameEvent:
+        special_events = [
+            {
+                "title": "😡 MASS PROTESTS ERUPT!",
+                "description": "Thousands take to the streets demanding change! The nation watches your response!",
+                "icon": "🪧",
+                "type": "crisis",
+                "auto_effects": {"Urban": -5, "Minorities": -8},
+                "is_special": True,
+                "responses": [
+                    EventResponse(
+                        "🤝 Meet Protest Leaders",
+                        "Engage in dialogue and address grievances directly.",
+                        {"Urban": +12, "Minorities": +18, "Rural": +8, "Tribal": +10},
+                        eq_change=15,
+                        budget_cost=25
+                    ),
+                    EventResponse(
+                        "🚔 Law & Order Crackdown",
+                        "Disperse protests to restore stability.",
+                        {"Urban": +8, "Minorities": -12, "Rural": +2, "Tribal": -5},
+                        eq_change=-18,
+                        budget_cost=15
+                    ),
+                    EventResponse(
+                        "📺 National Address",
+                        "Appeal to unity on national television.",
+                        {"Urban": +6, "Minorities": +8, "Rural": +6, "Tribal": +7},
+                        eq_change=5,
+                        budget_cost=10
+                    )
+                ]
+            },
+            {
+                "title": "🎉 NATIONAL CELEBRATION!",
+                "description": "Your nation wins the World Cup! Unity and joy sweep the land!",
+                "icon": "⚽",
+                "type": "opportunity",
+                "auto_effects": {"Urban": +8, "Rural": +8, "Tribal": +8, "Minorities": +8},
+                "is_special": True,
+                "responses": [
+                    EventResponse(
+                        "🏟️ Sports Infrastructure",
+                        "Capitalize on momentum with national sports program.",
+                        {"Urban": +15, "Rural": +12, "Tribal": +14, "Minorities": +16},
+                        eq_change=10,
+                        budget_cost=40
+                    ),
+                    EventResponse(
+                        "🎊 National Holiday",
+                        "Declare celebration day and public bonuses.",
+                        {"Urban": +10, "Rural": +10, "Tribal": +10, "Minorities": +10},
+                        eq_change=12,
+                        budget_cost=20
+                    ),
+                    EventResponse(
+                        "💼 Economic Reforms",
+                        "Use the morale boost to push reforms.",
+                        {"Urban": +12, "Rural": +8, "Tribal": +7, "Minorities": +9},
+                        eq_change=5,
+                        budget_cost=15
+                    )
+                ]
+            }
+        ]
+        
+        template = random.choice(special_events)
+        event = EventLibrary._create_event_from_template(template)
+        event.is_special = True
+        return event
+    
+    @staticmethod
+    def _create_event_from_template(template: dict) -> GameEvent:
+        return GameEvent(
+            title=template["title"],
+            description=template["description"],
+            icon=template["icon"],
+            event_type=template["type"],
+            auto_effects=template["auto_effects"],
+            responses=template["responses"],
+            is_special=template.get("is_special", False)
+        )
 
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
-#   https://pdm-project.org/en/latest/usage/project/#working-with-version-control
-#pdm.lock
-#pdm.toml
-.pdm-python
-.pdm-build/
+# --- MINI-GAME: QUICK TIME EVENT (ENHANCED) ---
+class QuickTimeEvent(ctk.CTkToplevel):
+    def __init__(self, parent, callback):
+        super().__init__(parent)
+        self.callback = callback
+        self.title("⚡ QUICK DECISION!")
+        self.geometry("500x300")
+        self.resizable(False, False)
+        
+        self.transient(parent)
+        self.grab_set()
+        self.lift()
+        self.focus_force()
+        
+        self.time_left = 5
+        self.success = False
+        
+        content = ctk.CTkFrame(self, fg_color=("white", "gray15"), corner_radius=20)
+        content.pack(fill="both", expand=True, padx=25, pady=25)
+        
+        ctk.CTkLabel(content, text="⚡ CRISIS ALERT! ⚡", 
+                     font=FontManager.get_font(FontManager.TITLE_LARGE, "bold"),
+                     text_color="#EF4444").pack(pady=20)
+        
+        ctk.CTkLabel(content, 
+                     text="A sudden emergency requires\nimmediate action!",
+                     font=FontManager.get_font(FontManager.BODY_LARGE)).pack(pady=15)
+        
+        self.timer_label = ctk.CTkLabel(content, text=f"⏰ Time: {self.time_left}s",
+                                        font=FontManager.get_font(FontManager.TITLE_MEDIUM, "bold"),
+                                        text_color="#F59E0B")
+        self.timer_label.pack(pady=15)
+        
+        btn_frame = ctk.CTkFrame(content, fg_color="transparent")
+        btn_frame.pack(pady=25)
+        
+        ctk.CTkButton(btn_frame, text="✅ Act Fast!", 
+                      command=lambda: self.respond(True),
+                      fg_color="#10B981", hover_color="#059669",
+                      width=140, height=45,
+                      font=FontManager.get_font(FontManager.BODY_LARGE, "bold"),
+                      corner_radius=12).pack(side="left", padx=15)
+        
+        ctk.CTkButton(btn_frame, text="⏸️ Wait & See",
+                      command=lambda: self.respond(False),
+                      fg_color="#F59E0B", hover_color="#D97706",
+                      width=140, height=45,
+                      font=FontManager.get_font(FontManager.BODY_LARGE, "bold"),
+                      corner_radius=12).pack(side="left", padx=15)
+        
+        self.countdown()
+    
+    def countdown(self):
+        if self.time_left > 0:
+            self.timer_label.configure(text=f"⏰ Time: {self.time_left}s")
+            self.time_left -= 1
+            self.after(1000, self.countdown)
+        else:
+            self.respond(False)
+    
+    def respond(self, fast_action: bool):
+        self.success = fast_action
+        self.callback(fast_action)
+        self.destroy()
 
-# pixi
-#   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
-#pixi.lock
-#   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
-#   in the .venv directory. It is recommended not to include this directory in version control.
-.pixi
+# --- GAME SCREEN (ENHANCED) ---
+class GameScreen(ctk.CTkFrame):
+    MAX_TURNS = 15
+    WIN_EQ_POINTS = 100
+    START_EQ_POINTS = 50
+    MIN_WELLBEING_THRESHOLD = 10
+    MAX_BAD_SENTIMENT_TURNS = 3
+    BUDGET_PER_TURN = 50
+    
+    SOC_ICONS = {
+        "Urban": "🏙️",
+        "Rural": "🚜",
+        "Tribal": "🏞️",
+        "Minorities": "👥"
+    }
+    
+    def __init__(self, master, app_controller, sound_manager):
+        super().__init__(master)
+        self.app_controller = app_controller
+        self.sound_manager = sound_manager
+        
+        self.grid_columnconfigure((0, 1), weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        
+        self.turn = 1
+        self.action_taken = False
+        self.consecutive_bad_sentiment_turns = 0
+        self.current_budget = self.BUDGET_PER_TURN
+        self.score = 0
+        
+        self.achievement_manager = AchievementManager()
+        self.powerup_manager = PowerUpManager()
+        
+        self.societies: Dict[str, Society] = {
+            "Urban": Society("Urban", wellbeing=55),
+            "Rural": Society("Rural", wellbeing=45),
+            "Tribal": Society("Tribal", wellbeing=40),
+            "Minorities": Society("Minorities", wellbeing=45),
+        }
+        
+        self.eq_points = self.START_EQ_POINTS
+        self.current_event: GameEvent = None
+        self.particle_system = None
+        self.news_ticker = None
+        
+        self._build_ui()
+        self.reset_game(initial=True)
+        self._refresh_ui()
+        
+        self.after(800, self._show_rules_popup)
+    
+    def _build_ui(self):
+        # --- Left Panel ---
+        self.left_frame = ctk.CTkFrame(self)
+        self.left_frame.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
+        self.left_frame.grid_columnconfigure(0, weight=1)
+        self.left_frame.grid_rowconfigure(3, weight=1)
+        
+        # Header with animated title
+        header = ctk.CTkFrame(self.left_frame, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 15))
+        
+        self.title_label = ctk.CTkLabel(header, text="⚖️ Society 10", 
+                                        font=FontManager.get_font(FontManager.TITLE_LARGE, "bold"),
+                                        text_color="#3B82F6")
+        self.title_label.pack()
+        self._animate_title()
+        
+        # Score and Stats
+        stats_frame = ctk.CTkFrame(self.left_frame, fg_color=("gray90", "gray17"),
+                                   corner_radius=15, border_width=2, border_color="#3B82F6")
+        stats_frame.grid(row=1, column=0, sticky="ew", pady=(0, 15))
+        
+        stats_grid = ctk.CTkFrame(stats_frame, fg_color="transparent")
+        stats_grid.pack(fill="x", padx=20, pady=20)
+        stats_grid.grid_columnconfigure((0, 1), weight=1)
+        
+        self.eq_var = tk.StringVar()
+        self.budget_var = tk.StringVar()
+        self.turn_var = tk.StringVar()
+        self.score_var = tk.StringVar()
+        
+        ctk.CTkLabel(stats_grid, textvariable=self.eq_var, 
+                     font=FontManager.get_font(FontManager.BODY_LARGE, "bold")).grid(row=0, column=0, sticky="w", padx=8, pady=5)
+        ctk.CTkLabel(stats_grid, textvariable=self.budget_var,
+                     font=FontManager.get_font(FontManager.BODY_LARGE, "bold")).grid(row=0, column=1, sticky="w", padx=8, pady=5)
+        ctk.CTkLabel(stats_grid, textvariable=self.turn_var,
+                     font=FontManager.get_font(FontManager.BODY_LARGE, "bold")).grid(row=1, column=0, sticky="w", padx=8, pady=5)
+        ctk.CTkLabel(stats_grid, textvariable=self.score_var,
+                     font=FontManager.get_font(FontManager.BODY_LARGE, "bold")).grid(row=1, column=1, sticky="w", padx=8, pady=5)
+        
+        # Achievements Display
+        achievement_frame = ctk.CTkFrame(self.left_frame, fg_color=("gray90", "gray17"),
+                                         corner_radius=15, border_width=2, border_color="#F59E0B")
+        achievement_frame.grid(row=2, column=0, sticky="ew", pady=(0, 15))
+        
+        ctk.CTkLabel(achievement_frame, text="🏆 Achievements",
+                     font=FontManager.get_font(FontManager.HEADER_MEDIUM, "bold"),
+                     text_color="#F59E0B").pack(anchor="w", padx=20, pady=(15, 8))
+        
+        self.achievement_var = tk.StringVar(value="0/10 Unlocked")
+        ctk.CTkLabel(achievement_frame, textvariable=self.achievement_var,
+                     font=FontManager.get_font(FontManager.BODY_MEDIUM)).pack(anchor="w", padx=20, pady=(0, 8))
+        
+        self.achievement_display = ctk.CTkLabel(achievement_frame, text="",
+                                                 font=FontManager.get_font(FontManager.BODY_SMALL),
+                                                 wraplength=380, justify="left")
+        self.achievement_display.pack(anchor="w", padx=20, pady=(0, 15))
+        
+        # Animated Bar Graph
+        graph_frame = ctk.CTkFrame(self.left_frame, fg_color=("gray90", "gray17"),
+                                   corner_radius=15, border_width=2, border_color="#10B981")
+        graph_frame.grid(row=3, column=0, sticky="nsew", pady=(0, 15))
+        graph_frame.grid_columnconfigure(0, weight=1)
+        graph_frame.grid_rowconfigure(1, weight=1)
+        
+        ctk.CTkLabel(graph_frame, text="📊 Wellbeing Monitor",
+                     font=FontManager.get_font(FontManager.HEADER_LARGE, "bold"),
+                     text_color="#10B981").grid(row=0, column=0, sticky="w", padx=20, pady=(15, 8))
+        
+        self.bar_canvas = tk.Canvas(graph_frame, bg="white", highlightthickness=0, height=220)
+        self.bar_canvas.grid(row=1, column=0, sticky="nsew", padx=15, pady=(8, 15))
+        
+        self.particle_system = ParticleSystem(self.bar_canvas)
+        
+        # News Ticker
+        ticker_frame = ctk.CTkFrame(self.left_frame, fg_color=("gray90", "gray17"),
+                                    corner_radius=12, height=45)
+        ticker_frame.grid(row=4, column=0, sticky="ew")
+        
+        self.ticker_canvas = tk.Canvas(ticker_frame, bg="white", highlightthickness=0, height=35)
+        self.ticker_canvas.pack(fill="both", expand=True, padx=8, pady=8)
+        
+        self.news_ticker = NewsTicker(self.ticker_canvas, 450)
+        
+        # --- Right Panel ---
+        self.right_frame = ctk.CTkFrame(self)
+        self.right_frame.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
+        self.right_frame.grid_columnconfigure(0, weight=1)
+        self.right_frame.grid_rowconfigure(1, weight=1)
+        
+        # Event Display
+        self.event_frame = ctk.CTkFrame(self.right_frame, fg_color=("gray90", "gray17"),
+                                        corner_radius=15, border_width=3, border_color="#EF4444")
+        self.event_frame.grid(row=0, column=0, sticky="ew", pady=(0, 15))
+        
+        self.event_title_var = tk.StringVar(value="📰 Awaiting Event...")
+        self.event_title_label = ctk.CTkLabel(self.event_frame, textvariable=self.event_title_var,
+                                              font=FontManager.get_font(FontManager.HEADER_LARGE, "bold"),
+                                              text_color="#EF4444")
+        self.event_title_label.pack(anchor="w", padx=20, pady=(15, 8))
+        
+        self.event_desc_var = tk.StringVar(value="")
+        ctk.CTkLabel(self.event_frame, textvariable=self.event_desc_var,
+                     wraplength=500, justify="left",
+                     font=FontManager.get_font(FontManager.BODY_MEDIUM)).pack(anchor="w", padx=20, pady=(0, 15))
+        
+        # Responses ScrollableFrame
+        self.responses_frame = ctk.CTkScrollableFrame(self.right_frame, 
+                                                       label_text="🎯 Choose Your Response",
+                                                       label_font=FontManager.get_font(FontManager.HEADER_MEDIUM, "bold"),
+                                                       corner_radius=15, height=320)
+        self.responses_frame.grid(row=1, column=0, sticky="nsew", pady=(0, 15))
+        
+        # Power-ups Panel
+        powerup_frame = ctk.CTkFrame(self.right_frame, fg_color=("gray90", "gray17"),
+                                     corner_radius=15, border_width=2, border_color="#8B5CF6")
+        powerup_frame.grid(row=2, column=0, sticky="ew", pady=(0, 15))
+        
+        ctk.CTkLabel(powerup_frame, text="⚡ Power-Ups",
+                     font=FontManager.get_font(FontManager.HEADER_MEDIUM, "bold"),
+                     text_color="#8B5CF6").pack(anchor="w", padx=20, pady=(15, 8))
+        
+        self.powerup_container = ctk.CTkFrame(powerup_frame, fg_color="transparent")
+        self.powerup_container.pack(fill="x", padx=20, pady=(0, 15))
+        
+        self._build_powerup_buttons()
+        
+        # Control Buttons
+        ctrl_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
+        ctrl_frame.grid(row=3, column=0, sticky="ew")
+        
+        self.next_turn_btn = ctk.CTkButton(ctrl_frame, text="➡️ Next Turn",
+                                            command=self.next_turn,
+                                            fg_color="#10B981", hover_color="#059669",
+                                            corner_radius=12, height=50,
+                                            font=FontManager.get_font(FontManager.HEADER_MEDIUM, "bold"))
+        self.next_turn_btn.pack(fill="x", pady=(0, 12))
+        
+        ctk.CTkButton(ctrl_frame, text="🏠 Return to Menu",
+                      command=self.app_controller.show_welcome_screen,
+                      fg_color="#EF4444", hover_color="#DC2626",
+                      corner_radius=12, height=40,
+                      font=FontManager.get_font(FontManager.BODY_LARGE)).pack(fill="x")
+    
+    def _build_powerup_buttons(self):
+        for widget in self.powerup_container.winfo_children():
+            widget.destroy()
+            
+        for powerup in self.powerup_manager.available_powerups[:2]:
+            btn = ctk.CTkButton(self.powerup_container,
+                               text=f"{powerup.icon} {powerup.name} (-{powerup.cost} EQ)",
+                               command=lambda p=powerup: self.use_powerup(p),
+                               fg_color="#8B5CF6", hover_color="#7C3AED",
+                               corner_radius=10, height=40,
+                               font=FontManager.get_font(FontManager.BODY_MEDIUM, "bold"))
+            btn.pack(fill="x", pady=5)
+    
+    def _animate_title(self):
+        """Smoother color transition"""
+        colors = ["#3B82F6", "#2563EB", "#1D4ED8", "#1E40AF", "#1D4ED8", "#2563EB"]
+        current_color = colors[self.turn % len(colors)]
+        self.title_label.configure(text_color=current_color)
+        self.after(600, self._animate_title)
+    
+    def _show_rules_popup(self):
+        popup = ctk.CTkToplevel(self)
+        popup.title("📜 How to Play Society 10")
+        popup.geometry("800x650")
+        popup.resizable(False, False)
+        
+        popup.transient(self.master)
+        popup.grab_set()
+        popup.lift()
+        popup.focus_force()
+        
+        
+        main_container = ctk.CTkFrame(popup, fg_color=("white", "gray15"), corner_radius=20)
+        main_container.pack(fill="both", expand=True, padx=25, pady=25)
+        
+    
+        ctk.CTkLabel(main_container, text="🎮 Society 10",
+                     font=FontManager.get_font(FontManager.TITLE_MEGA, "bold"),
+                     text_color="#3B82F6").pack(pady=(25, 10))
+        
+        ctk.CTkLabel(main_container, text="The Ultimate Equality Challenge",
+                     font=FontManager.get_font(FontManager.HEADER_LARGE, "bold"),
+                     text_color="#10B981").pack(pady=(0, 20))
+        
+       
+        rules_scroll = ctk.CTkScrollableFrame(main_container, 
+                                              fg_color="transparent",
+                                              height=400)
+        rules_scroll.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        
+        rules_sections = [
+            ("🎯 OBJECTIVE", 
+             f"Reach {self.WIN_EQ_POINTS} Equality Points before Turn {self.MAX_TURNS} ends!\nBalance wellbeing across all four societies."),
+            
+            ("🎲 HOW TO PLAY",
+             "• Each turn brings a unique EVENT affecting societies\n"
+             "• Choose ONE response with different impacts and costs\n"
+             f"• Manage your budget ({self.BUDGET_PER_TURN} pts/turn) wisely\n"
+             "• Help struggling societies to earn bonus points"),
+            
+            ("⚡ SPECIAL FEATURES",
+             "🏆 ACHIEVEMENTS - Unlock 10 unique achievements\n"
+             "💎 POWER-UPS - Use Equality Points for instant boosts\n"
+             "📰 NEWS TICKER - Live updates on your decisions\n"
+             "🎉 SPECIAL EVENTS - Random celebrations and crises\n"
+             "⏱️ QUICK-TIME EVENTS - Fast decisions earn bonuses\n"
+             "🎨 PARTICLES - Visual feedback on your actions"),
+            
+            ("💰 BUDGET SYSTEM",
+             "• Responses cost budget (shown on each card)\n"
+             "• Higher cost = stronger impact\n"
+             "• Budget resets each turn\n"
+             "• Choose wisely - can't afford everything!"),
+            
+            ("⚠️ LOSE IF:",
+             f"1. Equality Points drop below 0\n"
+             f"2. Any society falls below {self.MIN_WELLBEING_THRESHOLD} wellbeing\n"
+             f"3. Bad national sentiment for {self.MAX_BAD_SENTIMENT_TURNS} consecutive turns"),
+            
+            ("💡 PRO TIPS",
+             "✓ Watch for SPECIAL EVENTS - they're game-changers!\n"
+             "✓ Use power-ups during crises for maximum effect\n"
+             "✓ Helping low-wellbeing societies earns bonuses\n"
+             "✓ Quick-time events give extra rewards\n"
+             "✓ Balance is key - don't neglect any society!")
+        ]
+        
+        for title, content in rules_sections:
+            section_frame = ctk.CTkFrame(rules_scroll, fg_color=("gray95", "gray20"),
+                                        corner_radius=12, border_width=2, border_color="#3B82F6")
+            section_frame.pack(fill="x", pady=10, padx=5)
+            
+            ctk.CTkLabel(section_frame, text=title,
+                        font=FontManager.get_font(FontManager.HEADER_MEDIUM, "bold"),
+                        text_color="#3B82F6",
+                        anchor="w").pack(anchor="w", padx=20, pady=(15, 8))
+            
+            ctk.CTkLabel(section_frame, text=content,
+                        font=FontManager.get_font(FontManager.BODY_MEDIUM),
+                        anchor="w", justify="left",
+                        wraplength=680).pack(anchor="w", padx=20, pady=(0, 15))
+        
+        # Start button
+        ctk.CTkButton(main_container, text="✅ Let's Go!",
+                      command=popup.destroy,
+                      fg_color="#10B981", hover_color="#059669",
+                      height=50, width=200, corner_radius=12,
+                      font=FontManager.get_font(FontManager.HEADER_MEDIUM, "bold")).pack(pady=(10, 20))
+    
+    def _generate_new_event(self):
+        self.current_event = EventLibrary.generate_event(self.societies, self.turn)
+        
+        if random.random() < 0.25 and self.turn > 1:  # 25% chance
+            self.after(600, self._trigger_qte)
+        
+        for soc_name, delta in self.current_event.auto_effects.items():
+            self.societies[soc_name].change(delta)
+            if delta < 0:
+                self.news_ticker.add_message(f"{self.SOC_ICONS[soc_name]} {soc_name} affected by {self.current_event.title}!")
+        
+        self.event_title_var.set(f"{self.current_event.icon} {self.current_event.title}")
+        self.event_desc_var.set(self.current_event.description)
+        
+        self._pulse_widget(self.event_title_label, 3)
+        
+        if self.current_event.is_special:
+            if "PROTEST" in self.current_event.title:
+                SpecialEventAnimation.protest_animation(self.bar_canvas)
+            elif "CELEBRATION" in self.current_event.title:
+                SpecialEventAnimation.celebration_animation(self.bar_canvas)
+        
+        for widget in self.responses_frame.winfo_children():
+            widget.destroy()
+            
+        for response in self.current_event.responses:
+            self._create_response_card(response)
+        
+        self._refresh_ui()
+    
+    def _trigger_qte(self):
+        def qte_callback(fast_action: bool):
+            if fast_action:
+                bonus = 12
+                self.eq_points += bonus
+                self.score += 60
+                self.news_ticker.add_message(f"⚡ Lightning reflexes! +{bonus} Equality Points!")
+                self.particle_system.emit(250, 120, 30, ["#FFD700", "#FFA500", "#FF6347"], spread=1.5)
+            else:
+                self.news_ticker.add_message("⏸️ Cautious approach taken...")
+        
+        QuickTimeEvent(self, qte_callback)
+    
+    def _pulse_widget(self, widget, times, count=0):
+        """Smoother pulse animation"""
+        if count < times * 2:
+            sizes = [FontManager.HEADER_LARGE, FontManager.TITLE_MEDIUM]
+            current_size = sizes[count % 2]
+            widget.configure(font=FontManager.get_font(current_size, "bold"))
+            self.after(250, lambda: self._pulse_widget(widget, times, count + 1))
+    
+    def _create_response_card(self, response: EventResponse):
+        card = ctk.CTkFrame(self.responses_frame, fg_color=("white", "gray15"),
+                           corner_radius=15, border_width=2, border_color="#3B82F6")
+        card.pack(fill="x", pady=10, padx=8)
+        
+        # Smooth entrance animation
+        card.configure(height=0)
+        self._animate_card_entrance(card, target_height=180)
+        
+        header = ctk.CTkFrame(card, fg_color="transparent")
+        header.pack(fill="x", padx=20, pady=(15, 8))
+        
+        ctk.CTkLabel(header, text=response.title,
+                     font=FontManager.get_font(FontManager.BODY_LARGE, "bold"),
+                     text_color="#3B82F6").pack(side="left")
+        
+        cost_color = "#EF4444" if response.budget_cost > self.current_budget else "#10B981"
+        ctk.CTkLabel(header, text=f"💰 {response.budget_cost}",
+                     font=FontManager.get_font(FontManager.BODY_LARGE, "bold"),
+                     text_color=cost_color).pack(side="right")
+        
+        ctk.CTkLabel(card, text=response.description, wraplength=480, justify="left",
+                     font=FontManager.get_font(FontManager.BODY_MEDIUM)).pack(anchor="w", padx=20, pady=5)
+        
+        effects_text = self._format_effects(response.effects, response.eq_change)
+        ctk.CTkLabel(card, text=effects_text, wraplength=480, justify="left",
+                     font=FontManager.get_font(FontManager.BODY_MEDIUM, "bold")).pack(anchor="w", padx=20, pady=8)
+        
+        can_afford = response.budget_cost <= self.current_budget
+        btn = ctk.CTkButton(card, text="✅ Choose This" if can_afford else "❌ Can't Afford",
+                           command=lambda: self.select_response(response),
+                           fg_color="#10B981" if can_afford else "#6B7280",
+                           hover_color="#059669" if can_afford else "#6B7280",
+                           state="normal" if can_afford else "disabled",
+                           corner_radius=10, height=40,
+                           font=FontManager.get_font(FontManager.BODY_MEDIUM, "bold"))
+        btn.pack(anchor="e", padx=20, pady=(8, 15))
+    
+    def _animate_card_entrance(self, card, current_height=0, target_height=180):
+        """Smoother card animation with easing"""
+        if current_height < target_height:
+            progress = current_height / target_height
+            increment = max(8, int((1 - progress) * 20))
+            new_height = min(current_height + increment, target_height)
+            card.configure(height=new_height)
+            self.after(15, lambda: self._animate_card_entrance(card, new_height, target_height))
+    
+    def _format_effects(self, effects: Dict[str, int], eq_change: int) -> str:
+        parts = []
+        for soc, delta in effects.items():
+            icon = "🌟" if delta >= 15 else "✅" if delta > 5 else "⚠️" if delta < 0 else "➖"
+            parts.append(f"{self.SOC_ICONS[soc]} {icon} {delta:+d}")
+        
+        eq_icon = "⭐" if eq_change > 0 else "⚠️"
+        parts.append(f"{eq_icon} EQ: {eq_change:+d}")
+        
+        return " | ".join(parts)
+    
+    def select_response(self, response: EventResponse):
+        if response.budget_cost > self.current_budget:
+            messagebox.showwarning("Insufficient Budget",
+                                   f"This costs {response.budget_cost} but you only have {self.current_budget}!")
+            return
+        
+        if self.action_taken:
+            messagebox.showinfo("Already Acted", "You've already chosen a response this turn!")
+            return
+        
+        self.sound_manager.play_sfx_click()
+        
+        for soc_name, delta in response.effects.items():
+            self.societies[soc_name].change(delta)
+            
+            colors = ["#10B981", "#34D399", "#6EE7B7"] if delta > 0 else ["#EF4444", "#F87171", "#FCA5A5"]
+            x = random.randint(120, 320)
+            y = random.randint(60, 160)
+            self.particle_system.emit(x, y, 20, colors, spread=1.2)
+        
+        self.current_budget -= response.budget_cost
+        self.eq_points += response.eq_change
+        
+        values = [s.wellbeing for s in self.societies.values()]
+        stddev = statistics.pstdev(values)
+        inequality_penalty = int(stddev / 3)
+        
+        median_wb = statistics.median(values)
+        helped_low = sum(1 for soc_name, delta in response.effects.items()
+                        if delta > 0 and self.societies[soc_name].wellbeing < median_wb)
+        bonus = helped_low * 4  # Slightly increased bonus
+        
+        self.eq_points += (bonus - inequality_penalty)
+        self.score += max(0, (response.eq_change + bonus - inequality_penalty) * 10)
+        
+        self.news_ticker.add_message(f"✓ Policy enacted: {response.title}")
+        
+        if response.budget_cost >= 40:
+            self.achievement_manager.expensive_choices += 1
+            if self.achievement_manager.expensive_choices >= 5:
+                if self.achievement_manager.check_and_unlock("risk_taker"):
+                    self._show_achievement_unlock("risk_taker")
+        
+        self.action_taken = True
+        self._refresh_ui()
+    
+    def use_powerup(self, powerup: PowerUp):
+        if not self.powerup_manager.can_afford(powerup, self.eq_points):
+            messagebox.showwarning("Can't Afford", f"Need {powerup.cost} Equality Points!")
+            return
+        
+        self.sound_manager.play_sfx_click()
+        self.eq_points -= powerup.cost
+        
+        if powerup.effect_type == "boost":
+            for society in self.societies.values():
+                society.change(10)
+            self.news_ticker.add_message(f"💫 {powerup.name} activated! All societies boosted!")
+            
+            for i in range(8):
+                x = random.randint(80, 380)
+                y = random.randint(60, 180)
+                self.particle_system.emit(x, y, 25, ["#FFD700", "#FFA500", "#FF6347"], spread=1.5)
+                
+        elif powerup.effect_type == "budget":
+            self.current_budget += 50
+            self.news_ticker.add_message(f"💎 {powerup.name} activated! Budget increased!")
+            
+        elif powerup.effect_type == "shield":
+            self.powerup_manager.active_shields.append("crisis")
+            self.news_ticker.add_message(f"🛡️ {powerup.name} activated! Next crisis halved!")
+            
+        elif powerup.effect_type == "equality":
+            self.eq_points += 15 + powerup.cost
+            self.news_ticker.add_message(f"⚡ {powerup.name} activated! Equality surged!")
+        
+        self._refresh_ui()
+        messagebox.showinfo("Power-Up Activated!", 
+                           f"{powerup.icon} {powerup.name}\n\n{powerup.description}",
+                           )
+    
+    def next_turn(self):
+        if not self.action_taken:
+            messagebox.showwarning("No Action", "Please choose a response first!")
+            return
+        
+        sentiment_text, _ = self._calculate_sentiment()
+        if sentiment_text == "Bad 😡":
+            self.consecutive_bad_sentiment_turns += 1
+        else:
+            self.consecutive_bad_sentiment_turns = 0
+        
+        self.turn += 1
+        self.action_taken = False
+        self.current_budget = self.BUDGET_PER_TURN
+        
+        for s in self.societies.values():
+            drift = random.randint(-2, 2)
+            s.change(drift)
+        
+        if self.turn == 2:
+            if self.achievement_manager.check_and_unlock("first_turn"):
+                self._show_achievement_unlock("first_turn")
+        
+        if all(s.wellbeing >= 60 for s in self.societies.values()):
+            if self.achievement_manager.check_and_unlock("balanced_act"):
+                self._show_achievement_unlock("balanced_act")
+        
+        if self.eq_points >= 80:
+            if self.achievement_manager.check_and_unlock("equality_champion"):
+                self._show_achievement_unlock("equality_champion")
+        
+        if self.eq_points < 20:
+            self.achievement_manager.low_eq_recovered = True
+        elif self.achievement_manager.low_eq_recovered and self.eq_points >= 50:
+            if self.achievement_manager.check_and_unlock("comeback_kid"):
+                self._show_achievement_unlock("comeback_kid")
+        
+        self._generate_new_event()
+    
+    def _show_achievement_unlock(self, achievement_id: str):
+        achievement = self.achievement_manager.achievements[achievement_id]
+        
+        for i in range(12):
+            x = random.randint(80, 380)
+            y = random.randint(60, 180)
+            self.particle_system.emit(x, y, 20, ["#FFD700", "#FFA500"], spread=1.3)
+        
+        self.news_ticker.add_message(f"🏆 ACHIEVEMENT: {achievement.title}!")
+        
+        messagebox.showinfo("🏆 Achievement Unlocked!",
+                           f"{achievement.icon} {achievement.title}\n\n{achievement.description}",
+                           )
+    
+    def _calculate_sentiment(self) -> Tuple[str, str]:
+        values = [s.wellbeing for s in self.societies.values()]
+        avg = sum(values) / len(values)
+        
+        if avg >= 70:
+            return "Great 😊", "#10B981"
+        elif avg >= 45:
+            return "Mixed 😐", "#F59E0B"
+        else:
+            return "Bad 😡", "#EF4444"
+    
+    def _draw_bar_graph(self):
+        canvas = self.bar_canvas
+        canvas.delete("bar")
+        
+        width = canvas.winfo_width()
+        height = canvas.winfo_height()
+        
+        if width < 10:
+            return
+        
+        colors = {
+            "Urban": "#3B82F6",
+            "Rural": "#10B981",
+            "Tribal": "#F59E0B",
+            "Minorities": "#8B5CF6"
+        }
+        
+        societies_list = list(self.societies.keys())
+        bar_width = (width - 120) / len(societies_list)
+        
+        for i, name in enumerate(societies_list):
+            wb = self.societies[name].wellbeing
+            color = colors[name]
+            
+            x = 60 + (i * bar_width)
+            bar_height = (wb / 100) * (height - 70)
+            y_top = height - 50 - bar_height
+            
+    
+            steps = 10
+            for j in range(steps):
+                h = bar_height / steps
+                y = y_top + (j * h)
+                opacity_hex = format(int(255 - (j * 10)), '02x')
+                grad_color = color + opacity_hex if len(color) == 7 else color
+                
+                canvas.create_rectangle(x + 8, y, x + bar_width - 8, y + h,
+                                       fill=color, outline="", tags="bar")
+            
+            
+            canvas.create_rectangle(x + 8, y_top, x + bar_width - 8, height - 50,
+                                   fill="", outline="black", width=2, tags="bar")
+            
+            canvas.create_text(x + bar_width/2, y_top - 20, text=str(wb),
+                              font=("Segoe UI", 15, "bold"), fill=color, tags="bar")
+            
+            
+            canvas.create_text(x + bar_width/2, height - 30,
+                              text=self.SOC_ICONS[name], font=("Arial", 20), tags="bar")
+            canvas.create_text(x + bar_width/2, height - 10,
+                              text=name, font=("Segoe UI", 11, "bold"), tags="bar")
+    
+    def _refresh_ui(self):
+        self._draw_bar_graph()
+        
+        self.eq_var.set(f"⭐ EQ: {self.eq_points}/{self.WIN_EQ_POINTS}")
+        self.budget_var.set(f"💰 Budget: {self.current_budget}")
+        self.turn_var.set(f"📅 Turn: {self.turn}/{self.MAX_TURNS}")
+        self.score_var.set(f"🎯 Score: {self.score}")
+        
+        unlocked = self.achievement_manager.get_unlocked_count()
+        total = self.achievement_manager.get_total_count()
+        self.achievement_var.set(f"{unlocked}/{total} Unlocked")
+        
+        recent = [f"{a.icon} {a.title}" for a in self.achievement_manager.achievements.values() if a.unlocked][-3:]
+        self.achievement_display.configure(text="\n".join(recent) if recent else "Complete your first action!")
+        
+        self.next_turn_btn.configure(state="normal" if self.action_taken else "disabled")
+        
+        self._check_end_conditions()
+    
+    def _check_end_conditions(self):
+        min_wb = min(s.wellbeing for s in self.societies.values())
+        
+        if min_wb <= self.MIN_WELLBEING_THRESHOLD:
+            self._game_over(False, "collapse")
+        elif self.consecutive_bad_sentiment_turns >= self.MAX_BAD_SENTIMENT_TURNS:
+            self._game_over(False, "sentiment")
+        elif self.eq_points <= 0:
+            self._game_over(False, "inequality")
+        elif self.eq_points >= self.WIN_EQ_POINTS:
+            if self.turn < 10:
+                self.achievement_manager.check_and_unlock("speed_runner")
+            if all(s.wellbeing >= 70 for s in self.societies.values()):
+                self.achievement_manager.check_and_unlock("people_person")
+            if all(s.wellbeing >= 80 for s in self.societies.values()):
+                self.achievement_manager.check_and_unlock("perfectionist")
+            self._game_over(True, "victory")
+        elif self.turn > self.MAX_TURNS:
+            self._game_over(True, "time_up")
+    
+    def _game_over(self, won: bool, reason: str):
+        if won:
+            self.sound_manager.play_music_victory()
+            for i in range(30):
+                x = random.randint(80, 380)
+                y = random.randint(60, 180)
+                self.particle_system.emit(x, y, 40, ["#FFD700", "#FFA500", "#FF6347"], spread=2.0)
+            
+            if reason == "victory":
+                msg = f"🎉 VICTORY! 🎉\n\nEquality Achieved: {self.eq_points} Points!\n\nFinal Score: {self.score}\nTurns Taken: {self.turn}\n\nCongratulations, Mr. President!"
+            else:
+                msg = f"Term Complete!\n\nFinal EQ: {self.eq_points}\nFinal Score: {self.score}\n\nYou've done your best!"
+            messagebox.showinfo("Success!", msg)
+        else:
+            self.sound_manager.play_music_loss()
+            reasons = {
+                "collapse": "A society has collapsed completely!\nWellbeing dropped too low.",
+                "sentiment": "National unrest forced your resignation!\nSentiment was bad for too long.",
+                "inequality": "Inequality reached critical levels!\nEquality Points dropped to zero."
+            }
+            msg = f"Game Over\n\n{reasons.get(reason, 'Failed')}\n\nFinal Score: {self.score}\n\nTry again!"
+            messagebox.showerror("Defeat", msg)
+        
+        self.app_controller.show_welcome_screen()
+    
+    def reset_game(self, initial=False):
+        self.turn = 1
+        self.action_taken = False
+        self.consecutive_bad_sentiment_turns = 0
+        self.current_budget = self.BUDGET_PER_TURN
+        self.score = 0
+        self.eq_points = self.START_EQ_POINTS
+        
+        for name in self.societies:
+            self.societies[name].wellbeing = random.randint(40, 70)
+        
+        self.achievement_manager = AchievementManager()
+        self._generate_new_event()
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
+# --- WELCOME SCREEN (ENHANCED) ---
+class WelcomeScreen(ctk.CTkFrame):
+    def __init__(self, master, app_controller, sound_manager):
+        super().__init__(master)
+        self.app_controller = app_controller
+        self.sound_manager = sound_manager
 
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
+        self.configure(fg_color=("#E0F2FE", "#1E293B"))
+        
+        content = ctk.CTkFrame(self, fg_color=("white", "gray10"),
+                              corner_radius=25, border_width=4, border_color="#3B82F6")
+        content.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.65, relheight=0.75)
+        
+        self.title = ctk.CTkLabel(content, text="⚖️ SOCIETY 10",
+                                  font=FontManager.get_font(FontManager.TITLE_MEGA, "bold"),
+                                  text_color="#3B82F6")
+        self.title.pack(pady=(70, 15))
+        self._animate_welcome_title()
+        
+        ctk.CTkLabel(content, text="The Ultimate Equality Challenge",
+                     font=FontManager.get_font(FontManager.TITLE_MEDIUM, "bold"),
+                     text_color="#10B981").pack(pady=8)
+        
+        ctk.CTkLabel(content, text="Balance society, earn achievements, and save the nation!",
+                     font=FontManager.get_font(FontManager.BODY_LARGE)).pack(pady=25)
+        
+        features = """
+🎮 Dynamic Events • 🏆 10 Achievements • ⚡ Power-Ups
+📰 Live News Ticker • 🎨 Smooth Animations • ⏱️ Quick-Time Events
+"""
+        ctk.CTkLabel(content, text=features,
+                     font=FontManager.get_font(FontManager.BODY_MEDIUM),
+                     text_color="#F59E0B").pack(pady=20)
 
-# SageMath parsed files
-*.sage.py
+        ctk.CTkButton(content, text="🎮 START GAME",
+                      command=self._start_game,
+                      font=FontManager.get_font(FontManager.TITLE_MEDIUM, "bold"),
+                      fg_color="#10B981", hover_color="#059669",
+                      height=70, width=320, corner_radius=18).pack(pady=35)
+        
+        ctk.CTkButton(content, text="❌ Exit Game",
+                      command=master.destroy,
+                      font=FontManager.get_font(FontManager.BODY_LARGE),
+                      fg_color="#EF4444", hover_color="#DC2626",
+                      height=45, width=180, corner_radius=15).pack()
+        
+        ctk.CTkLabel(content, text="Based on UN SDG Goal 10: Reduced Inequalities",
+                     font=FontManager.get_font(FontManager.CAPTION),
+                     text_color="gray").pack(pady=(25, 20))
+        
+        # Bottom right logo and text
+        try:
+            logo_frame = ctk.CTkFrame(self, fg_color="transparent")
+            logo_frame.place(relx=0.98, rely=0.97, anchor="se")
+            
+            ctk.CTkLabel(logo_frame, text="A Creation of",
+                        font=FontManager.get_font(FontManager.BODY_MEDIUM),
+                        text_color="gray").pack(side="left", padx=(0, 10))
+            
+            # Load and display logo (replace "logo.png" with your logo filename)
+            logo_image = Image.open("logo.png")
+            logo_ctk = ctk.CTkImage(light_image=logo_image, dark_image=logo_image, size=(60, 60))
+            ctk.CTkLabel(logo_frame, image=logo_ctk, text="").pack(side="left")
+        except Exception as e:
+            print(f"Could not load logo: {e}")
+        
+        self.sound_manager.play_music_menu()
+    
+    def _animate_welcome_title(self):
+        current = self.title.cget("text")
+        if "⚖️" in current and current.endswith("10"):
+            self.title.configure(text="⚖️ SOCIETY 10 ⚖️")
+        else:
+            self.title.configure(text="⚖️ SOCIETY 10")
+        self.after(900, self._animate_welcome_title)
+    
+    def _start_game(self):
+        self.sound_manager.stop_music()
+        self.sound_manager.play_sfx_click()
+        self.app_controller.show_game_screen()
 
-# Environments
-.env
-.envrc
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+# --- MAIN APP ---
+class PresidentialApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("Society 10 - The Equality Challenge")
+        self.geometry("1450x850")
+        self.minsize(1300, 750)
+        
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        
+        self.sound_manager = SoundManager()
+        self.current_frame = None
+        
+        self.show_welcome_screen()
+    
+    def show_welcome_screen(self):
+        if self.current_frame:
+            self.current_frame.destroy()
+        self.current_frame = WelcomeScreen(self, self, self.sound_manager)
+        self.current_frame.grid(row=0, column=0, sticky="nsew")
+    
+    def show_game_screen(self):
+        if self.current_frame:
+            self.current_frame.destroy()
+        self.current_frame = GameScreen(self, self, self.sound_manager)
+        self.current_frame.grid(row=0, column=0, sticky="nsew")
 
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# pytype static type analyzer
-.pytype/
-
-# Cython debug symbols
-cython_debug/
-
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
-
-# Abstra
-# Abstra is an AI-powered process automation framework.
-# Ignore directories containing user credentials, local state, and settings.
-# Learn more at https://abstra.io/docs
-.abstra/
-
-# Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#  you could uncomment the following to ignore the entire vscode folder
-# .vscode/
-
-# Ruff stuff:
-.ruff_cache/
-
-# PyPI configuration file
-.pypirc
-
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
-.cursorignore
-.cursorindexingignore
-
-# Marimo
-marimo/_static/
-marimo/_lsp/
-__marimo__/
+if __name__ == "__main__":
+    app = PresidentialApp()
+    app.mainloop()
