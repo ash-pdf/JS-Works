@@ -31,8 +31,6 @@ pip (Python package installer - comes with Python)
 Step 1: Clone the Repository
 Bash
 
-git clone https://github.com/yourusername/society-10.git
-cd society-10
 Step 2: Install Required Dependencies
 Install all required Python packages using pip:
 
@@ -41,11 +39,7 @@ Bash
 pip install customtkinter
 pip install pillow
 pip install pygame
-OR use the requirements file (if provided):
-
-Bash
-
-pip install -r requirements.txt
+Then add all these assets to a folder 📂 
 Step 3: Add Assets (Optional)
 For enhanced experience with sounds, add these files to the game directory:
 
